@@ -7,7 +7,7 @@ from parse import JSMapParser
 
 def readFile(path: Path):
     res = []
-    with path.open(mode='r') as stream:
+    with path.open(mode='r', encoding='utf-8') as stream:
         line = stream.readline()
         while line:
             line = line.replace('\n', '')
@@ -19,7 +19,7 @@ def readFile(path: Path):
 
 if __name__ == '__main__':
 
-    base_dir = Path('D:\\MyProjects\\BugBounty\\BugCrowd_Viator\\web\\travelagents\\front-src')  # Путь до рутовой директории
+    base_dir = Path('D:\\MyProjects\\BugBounty\\BugCrowd_Viator\\web\\partners\\services\\partners')  # Путь до рутовой директории
     sourcemap_src = Path(base_dir, SOURCEMAP_SRC_DIR)  # Где будут лежать скачанные файлы .js.map
     scripts_list_path = Path(base_dir, 'js.list')
     scripts_list = readFile(scripts_list_path)

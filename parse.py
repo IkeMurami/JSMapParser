@@ -17,7 +17,7 @@ class JSMapParser(object):
             file_path — путь до SourceMap-файла
         """
 
-        with file_path.open(mode='r') as inp_stream:
+        with file_path.open(mode='r', encoding='utf-8') as inp_stream:
             sourcemap_data = json.loads(inp_stream.read())
 
             try:
@@ -29,7 +29,7 @@ class JSMapParser(object):
 
                     full_out_name.parent.mkdir(parents=True, exist_ok=True)
 
-                    with full_out_name.open(mode='w') as out_stream:
+                    with full_out_name.open(mode='w', encoding='utf-8') as out_stream:
                         out_stream.write(file_content)
 
             except:
