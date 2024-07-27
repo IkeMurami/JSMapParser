@@ -1,15 +1,29 @@
 import json
 from pathlib import Path
+from typing import List
 import random
 import string
+from pydantic import BaseModel, field_validator
 
 from const import LOG_PATH
 
-log_file = Path(LOG_PATH).open(mode='w')
+log_file = Path(LOG_PATH).open(mode='a')
+
+
+class Source(BaseModel):
+    path: str
+    content: str = ''
+
+
+class SourceMap(BaseModel):
+    path: Path
+    sources: List[Source]
+
 
 class JSMapParser(object):
 
     base_dir_path: Path
+    WEBPACK_PREFIX = 'webpack://'
 
     def __init__(self, base_dir_path: Path):
         """
@@ -33,43 +47,59 @@ class JSMapParser(object):
 
         return file_path
 
-    def _sourcemap_parse(self, file_path: Path):
-        """
-            file_path — путь до SourceMap-файла
-        """
+    def _save(self, base: Path, sourcemaps: List[SourceMap]):
+        sources: List[Source] = list()
+        for sm in sourcemaps:
+            sources.extend(sm.sources)
 
-        with file_path.open(mode='r', encoding='utf-8') as inp_stream:
+        rootProjPath = '/'.join(
+            list(
+                map(
+                    lambda x: str(x),
+                    range(
+                        max(map(lambda p: p.path.count('../'), sources))
+                    )
+                )
+            )
+        )
+        rootProjPath = base.joinpath(rootProjPath)
+        rootProjPath.mkdir(parents=True, exist_ok=True)
+
+        for source in sources:
+            p = source.path[len(self.WEBPACK_PREFIX):] if source.path.startswith(self.WEBPACK_PREFIX) else source.path
+            p = p[1:] if p.startswith('/') else p  # '/' в начале ломает join: Path('/test/1/2/3', '/test2/./test1') -> /test2/test1
+            p = p.split('?')[0]  # Убираем то, что после ?
+            p = rootProjPath.joinpath(p).resolve()
+
+            p.parent.mkdir(parents=True, exist_ok=True)
+
+            if p.is_dir():
+                letters = string.digits
+                r = ''.join(random.choice(letters) for i in range(6))
+                p = p.joinpath(r)
+
+            with p.open(mode='w') as out_stream:
+                out_stream.write(source.content)
+
+    def _parse(self, path: Path) -> SourceMap:
+        with path.open(mode='r', encoding='utf-8') as inp_stream:
             sourcemap_data = json.loads(inp_stream.read())
 
             if 'sources' not in sourcemap_data or 'sourcesContent' not in sourcemap_data:
-                print(f'Sourcemap {file_path} is empty', file=log_file)
-                return
+                return SourceMap(path, sources=list())
 
-            for file_name, file_content in zip(sourcemap_data['sources'], sourcemap_data['sourcesContent']):
-                
-                out_name = file_name.replace('webpack:///', '')
-                out_name = out_name.replace('../', '_1')
-                out_name = out_name if out_name[0] == '.' else '.' + out_name  # Иначе пути не правильно джойнятся (wtf?)
-                out_name = out_name.split('?')[0]
-                
-                # it's exception
-                if 'i18n lazy' in out_name:
-                    continue
-                
-                full_out_name = Path(self.base_dir_path, out_name)
-
-                # Есть предположение, что могут быть одинаковые файлы в SourceMap файлах => они будут переписывать друг друга и мы потеряем кусочек кода
-                # full_out_name = self._correct_filename(full_out_name)
-
-                try:
-                    full_out_name.parent.mkdir(parents=True, exist_ok=True)
-
-                    with full_out_name.open(mode='w', encoding='utf-8') as out_stream:
-                        out_stream.write(file_content)
-                except FileNotFoundError:
-                    print(f'Something wrong in sourcemap file: {file_path}, I couldnot save: {full_out_name}', file=log_file)
-
-               
+            return SourceMap(
+                path=path,
+                sources=list(
+                    map(
+                        lambda pair: Source(
+                            path=pair[0],
+                            content=pair[1],
+                        ),
+                        zip(sourcemap_data['sources'], sourcemap_data['sourcesContent'])
+                    )
+                )
+            )
 
     def parse(self, sourcemap_dir_path: Path):
         """
@@ -78,8 +108,7 @@ class JSMapParser(object):
         assert sourcemap_dir_path.is_dir(), f'{sourcemap_dir_path} is not directory!!!'
 
         all_objects = sourcemap_dir_path.glob('**/*')           # 1. Собираем все дочерние файлы и директории
-        [
-            self._sourcemap_parse(path)                         # 3. Парсим каждый файл
-            for path in all_objects 
-            if path.is_file() and path.name[-4:] == '.map'      # 2. Находим все файлы, оканчивающиеся на .map
-        ]  # parse .js.map files
+        paths = [path for path in all_objects if path.is_file() and path.name[-4:] == '.map']  # 2. Находим все файлы, оканчивающиеся на .map
+        parsed = map(lambda p: self._parse(p), paths)   # 3. Парсим каждый файл
+        self._save(self.base_dir_path, parsed)
+
