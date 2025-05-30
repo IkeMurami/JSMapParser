@@ -12,7 +12,7 @@ log_file = Path(LOG_PATH).open(mode='a')
 
 class Source(BaseModel):
     path: str
-    content: str = ''
+    content: str | None = ''
 
 
 class SourceMap(BaseModel):
@@ -64,12 +64,15 @@ class JSMapParser(object):
         )
         rootProjPath = base.joinpath(rootProjPath)
         rootProjPath.mkdir(parents=True, exist_ok=True)
-
+        sources.sort(key=lambda x: len(x.path), reverse=True)
+        # print('sorted', sources)
         for source in sources:
             p = source.path[len(self.WEBPACK_PREFIX):] if source.path.startswith(self.WEBPACK_PREFIX) else source.path
             p = p[1:] if p.startswith('/') else p  # '/' в начале ломает join: Path('/test/1/2/3', '/test2/./test1') -> /test2/test1
             p = p.split('?')[0]  # Убираем то, что после ?
             p = rootProjPath.joinpath(p).resolve()
+
+            print('Path', p)
 
             p.parent.mkdir(parents=True, exist_ok=True)
 
@@ -79,14 +82,14 @@ class JSMapParser(object):
                 p = p.joinpath(r)
 
             with p.open(mode='w') as out_stream:
-                out_stream.write(source.content)
+                out_stream.write(source.content if source.content else '')
 
     def _parse(self, path: Path) -> SourceMap:
         with path.open(mode='r', encoding='utf-8') as inp_stream:
             sourcemap_data = json.loads(inp_stream.read())
 
             if 'sources' not in sourcemap_data or 'sourcesContent' not in sourcemap_data:
-                return SourceMap(path, sources=list())
+                return SourceMap(path=path, sources=list())
 
             return SourceMap(
                 path=path,

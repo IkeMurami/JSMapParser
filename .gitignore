@@ -1,5 +1,9 @@
 # Custom
 log.txt
+js
+js_src
+sourcemap_src
+js.list
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
